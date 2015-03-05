@@ -33,6 +33,7 @@
 #include "uart.h"
 
 unsigned int buffer; //buffer for char
+void analog_init();
 
 int main(void)
 {
@@ -50,6 +51,7 @@ int main(void)
 		{
 			//No Data available
 		} else {
+		}
     }
 }
 
