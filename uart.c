@@ -523,6 +523,7 @@ void uart_puts_p(const char *progmem_s )
 }/* uart_puts_p */
 
 
+
 /*
  * these functions are only for ATmegas with two USART
  */
@@ -705,11 +706,10 @@ void uart1_puts_p(const char *progmem_s )
 
 }/* uart1_puts_p */
 
+#endif //zwo usart
 
 ISR(TIMER0_OVF_vect)
 {
 	frame_counter = 0;   //New Frame
-	TCCR0 &= ~(1 << CS02); //Stop Counter
+	TCCR0 &= 0b11111000; //Stop Counter
 }
-
-#endif

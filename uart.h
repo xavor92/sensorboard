@@ -192,7 +192,7 @@ extern void uart1_puts_p(const char *s );
 
 
 //Additional Framing Stuff
-extern unsigned char frame_counter;
+extern unsigned char frame_counter; //0 = No Frame in Progress, >0 = byteCounter of current frame, reseted after 4msec without byte
 
 #endif // UART_H 
 
