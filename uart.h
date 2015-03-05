@@ -191,5 +191,8 @@ extern void uart1_puts_p(const char *s );
 /**@}*/
 
 
+//Additional Framing Stuff
+extern unsigned char frame_counter;
+
 #endif // UART_H 
 

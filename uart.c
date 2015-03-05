@@ -46,6 +46,9 @@ LICENSE:
  *  constants and macros
  */
 
+//Frame Status byte
+unsigned char frame_counter;
+
 /* size of RX/TX buffers */
 #define UART_RX_BUFFER_MASK ( UART_RX_BUFFER_SIZE - 1)
 #define UART_TX_BUFFER_MASK ( UART_TX_BUFFER_SIZE - 1)
@@ -299,6 +302,11 @@ Purpose:  called when the UART has received a character
         UART_RxBuf[tmphead] = data;
     }
     UART_LastRxError |= lastRxError;   
+	
+	//Frame Status Update
+	frame_counter++;
+	TCNT0 = 0; //Reset Timer
+	TCCR0 |= (1 << CS02); //clk = clkIO/256;
 }
 
 
@@ -413,6 +421,18 @@ void uart_init(unsigned int baudrate)
     /* Set frame format: asynchronous, 8data, no parity, 1stop bit */
     UCSR1C = (1<<UCSZ11)|(1<<UCSZ10);
 #endif
+
+/*
+ * Additional Timer Setting for Frame Start
+ *		Using Timer0 to find a framing start, if break between two uart packages is bigger than 4ms than its a new frame
+ */
+
+
+TCCR0 |= ((1 << CS02));	//clock select = clk/256
+TIMSK |= (1 << TOIE0); //Timer overflow Interrupt Enable
+frame_counter = 0;
+
+	
 
 }/* uart_init */
 
@@ -685,5 +705,11 @@ void uart1_puts_p(const char *progmem_s )
 
 }/* uart1_puts_p */
 
+
+ISR(TIMER0_OVF_vect)
+{
+	frame_counter = 0;   //New Frame
+	TCCR0 &= ~(1 << CS02); //Stop Counter
+}
 
 #endif

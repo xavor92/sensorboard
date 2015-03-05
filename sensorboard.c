@@ -32,11 +32,13 @@
 #include <util/delay.h>
 #include "uart.h"
 
+unsigned char new_frame;
 unsigned int buffer; //buffer for char
 void analog_init();
 
 int main(void)
 {
+	new_frame = 0;
 	DDRC |= (1 << IR_OUT1);
 	DDRD |= ((1 << PD5) | (1 << PD6) | (1 << PD7));
 	PORTB |= (1 << TASTER);
@@ -45,13 +47,28 @@ int main(void)
 	sei();
     while(1)
     {
-		//ask if Data in RX Buffer
-		buffer = uart_getc();
-		if(buffer & UART_NO_DATA)
+		if(!(uart_getc() & UART_NO_DATA))
 		{
-			//No Data available
-		} else {
+			uart_putc(frame_counter);
 		}
+		/* OLD ADC STUFF */
+		/*
+		if (!(PINB & (1 << TASTER)))
+		{
+			PORTD = 0xFF;
+			PORTC |= (1 << IR_OUT1);
+			ADCSRA |= (1 << ADSC); //start conversion
+			while(ADCSRA & (1 << ADSC))
+			{
+				asm volatile("nop"); //wait for conversion to complete
+			}
+			uart_puts("\r\nADC: ");
+			uart_putc(ADCH);
+		} else
+		{
+			PORTD = 0x00;
+			PORTC &= ~( (1 << IR_OUT1));
+		}*/
     }
 }
 
