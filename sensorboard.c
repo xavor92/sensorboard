@@ -6,9 +6,19 @@
  * Protocoll:
  *		Byte 0: address of Target
  *		Byte 1: Port / Function (Bit 7 = 0 Read, Bit 7 = 1 Write, Bit 0-6 address)
- *		Byte 3+n: CheckSum, High Byte
- *		Byte 4+n: CheckSum, Low Byte
+ *		Byte 2: Data
+ *		Byte 3: CheckSum, High Byte
+ *		Byte 4: CheckSum, Low Byte
  *		
+ *		CheckSum Generator Beta:
+ *			http://www.tutorialspoint.com/compile_c_online.php?PID=0Bw_CjBb95KQMdVBCYTRTbW04ams
+ *			May have some Bugs for ex when entering FF, Final output will
+ *			be fucked up but checksum is correct.
+ *
+ *		ToDo/Markers as of 6.3.15
+ *			Catch Broadcast Read
+ *			Fix FF on Checksum Generator
+ *
  *
  * Created: 27.02.2015 00:36:00
  *  Author: Olli
@@ -23,93 +33,99 @@
 #define IR_OUT1 PC3
 #define IR_IN1 PC2
 #define TASTER PB2
-#define ADRESS 7
+#define JUMPER PB1
+#define ADRESS 0x34
 
 #define F_CPU 16000000UL
 #define UART_BAUD_RATE 9600
-
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
 #include "uart.h"
 
+//receive
+void receive();
+
+//initialize ADC
 void analog_init();
+
+//process crc_reg with new_char
 void process_crc(unsigned char new_char);
 
-unsigned char buffer_address, buffer_port, buffer_length;
-unsigned char port;
+unsigned char buffer_address, buffer_port, buffer_data, buffer_crch, buffer_crcl;
+
 unsigned int crc_reg; //CRC Register
 
 /*
  *	frame_status is the actual mode of the slave, equivalent to the protocol,
   *		0:			Waiting for address
-  *		1:			Got address, waiting for Read/write
-  *		2:			Got address but not our address/global
-  *		10:			Read stuff
-  *		11:			Write stuff
+  *		1:			Got address, waiting for Read/write + port
+  *		2:			Waiting for DataByte
+  *		3:			Waiting for CRC16
+  *		99:			Got everything, waiting for crc check approval
+  *		100:		crc check correct, process data
+  *		101:		not the slaves address
  */
-unsigned char frame_status; 
-
-
+unsigned char frame_status;
 
 int main(void)
 {
-	frame_status = 99;
-	DDRC |= (1 << IR_OUT1);
 	DDRD |= ((1 << PD5) | (1 << PD6) | (1 << PD7));
-	PORTB |= (1 << TASTER);
+	PORTB |= (1 << TASTER) | (1 << JUMPER);
 	uart_init( UART_BAUD_SELECT(UART_BAUD_RATE, F_CPU) );
 	analog_init();
 	sei();
-	//_delay_ms(5); //wait to recognize a start frame
+	_delay_ms(5); //wait to recognize a start frame for sure
 	if(frame_counter == 0) frame_status = 0;
     while(1)
     {
-		if(frame_counter > 0 && frame_status == 0)	//we received sth and are waiting for an address
-		{
-			buffer_address = uart_getc();
-			if(buffer_address == ADRESS || buffer_address == 0)	//if addressed to slave or broadcast
-			{
-				frame_status = 1;
-			} else 
-			{
-				frame_status = 2;
-			}
-		}
-		if (frame_counter > 1 && frame_status == 1) //were addressed and a new port/command is available
-		{
-			buffer_port = uart_getc();
-			if(buffer_port & UART_NO_DATA) PORTD |= (1 << PD5);
-			//check for Bit7  (Bit 7 = 0 Read, Bit 7 = 1 Write)
-			if (buffer_port & 0b10000000)  //bit 7 set -> write
-			{
-				//save we want to write
-				frame_status = 11;
-			} else 
-			{
-				frame_status = 10;
-				//save we want to read
-			}
-			port = buffer_port & 0b01111111;
-		}
+		receive();
 		
-		if (!(PINB & (1 << TASTER)))
+		//check crc checksums
+		if(frame_status == 99)
 		{
 			crc_reg = 0xFFFF;
-			process_crc(0x34);
-			process_crc(0x00);
-			process_crc(0x01);
-			process_crc(0xFF);
-			process_crc(0x23);
-			uart_putc(crc_reg >> 8);
-			uart_putc(crc_reg & 0xFF);
-			_delay_ms(1000);
+			process_crc(buffer_address);
+			process_crc(buffer_port);
+			process_crc(buffer_data);
+			if( (crc_reg >> 8 == buffer_crch) && ((crc_reg & 0xFF) == buffer_crcl) )
+				frame_status = 100;
 		}
+		
+		/*
+		 * Execution of input */
+		
+		if (frame_status == 100)
+		{
+			if ( buffer_port & 0b10000000 ) //1 in bit7 -> write
+			{
+				if( (buffer_port & 0b0111111) == 0)
+					PORTD = buffer_data;
+			} else							//read
+			{
+				if( (buffer_port & 0b0111111) == 0)
+				{
+					buffer_data = PINB;
+					crc_reg = 0xFFFF;
+					process_crc(buffer_address);
+					process_crc(buffer_port);
+					process_crc(buffer_data);
+					uart_putc(buffer_address);
+					uart_putc(buffer_port);
+					uart_putc(buffer_data);
+					uart_putc(crc_reg >> 8);
+					uart_putc(crc_reg & 0xFF);
+				}
+			}
+			
+			frame_status = 0;
+		}
+		
 		if(frame_status != 0 && frame_counter == 0)
 		{
 			frame_status = 0;
-			while(!(uart_getc() && UART_NO_DATA))
+			while(!(uart_getc() && UART_NO_DATA)) //clear receive buffer
 			{
 				asm volatile("nop"); //wait for conversion to complete
 			}
@@ -135,6 +151,50 @@ int main(void)
     }
 }
 
+void receive()
+{
+	/*
+	 *	Get Address
+	 */ 
+	if(frame_counter > 0 && frame_status == 0)	//we received sth and are waiting for an address
+	{
+		buffer_address = uart_getc();
+		if(buffer_address == ADRESS || buffer_address == 0)	//if addressed to slave or broadcast
+		{
+			frame_status = 1;
+		} else 
+		{
+			frame_status = 101;
+		}
+	}
+		
+	/*
+	 *	Get Port
+	 */
+	if (frame_counter > 1 && frame_status == 1) //were addressed and a new port/command is available
+	{
+		buffer_port = uart_getc();
+		frame_status = 2;
+	}
+		
+	/*
+	 *	Get Data
+ 	 */
+	if (frame_counter > 2 && frame_status == 2)
+	{
+		buffer_data = uart_getc();
+		frame_status = 3;
+	}
+		
+	if (frame_counter > 4 && frame_status == 3) //get and save crc
+	{
+		buffer_crch = uart_getc();
+		buffer_crcl = uart_getc();
+		frame_status = 99;
+	}
+}
+
+//analog init script
 void analog_init()
 {
 		/* AVCC as Input Source, 100nF Cap between AREF and AVCC needed! */
@@ -155,9 +215,10 @@ void analog_init()
 	}
 }
 
-//Function from ftp://www.wickenhaeuser.de/anleitungen/rs485pro.pdf
+//process crc_reg with new_char
 void process_crc(unsigned char new_char)
 {
+	//Function from ftp://www.wickenhaeuser.de/anleitungen/rs485pro.pdf
 	unsigned char uci, w;
 	crc_reg ^= new_char;		// Einblendung im unteren Byte der CRC
 	for(uci = 8; uci; uci--)	// 8 Schleifendurchgänge
