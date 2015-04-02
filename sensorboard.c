@@ -2,44 +2,6 @@
  * sensorboard.c
  *	Development Board for tool cabinet sensors
  *
- *
- * Protocoll:
- *		Byte 0: address of target
- *		Byte 1: Port / Function (Bit 7 = 0 Read, Bit 7 = 1 Write, Bit 0-6 address)
- *		Byte 2: Data
- *		Byte 3: CheckSum, high byte
- *		Byte 4: CheckSum, low byte
- *		
- *
- *	Addresses:
- *		0x00 Status Register [undone]
- *			Bit 0:
- *			Bit 1:
- *			Bit 2:
- *			Bit 3:
- *			Bit 4:
- *			Bit 5:
- *			Bit 6:
- *			Bit 7:
- *
- *		0x01 Task List
- *			Bit 0: Perform left/lower sensor routine, write 1 to initiate, returns actual tasklist in data
- *			Bit 1: Perform right/higher sensor routine,  write 1 to initiate, returns actual tasklist in data
- *
- *
- *		0x10 value of left/lower sensor routine
- *		0x11 value of right/higher sensor routine
- *		
- *		CheckSum Generator Beta:
- *			http://www.tutorialspoint.com/compile_c_online.php?PID=0Bw_CjBb95KQMdVBCYTRTbW04ams
- *			May have some Bugs for ex when entering FF, Final output will
- *			be fucked up but checksum is correct.
- *
- *		ToDo/Markers as of 6.3.15
- *			Catch Broadcast Read
- *			Fix FF on Checksum Generator
- *
- *
  * Created: 27.02.2015 00:36:00
  *  Author: Olli
  */ 
@@ -62,52 +24,45 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
+#include "timer.h"
+#include "dbus.h"
 #include "uart.h"
 
-//initialize ADC
-void analog_init();
 
-//receive data
-void receive();
 
-//perform any actions
-void perform();
-
-//send a set of address, port and data
-void send(unsigned char address, unsigned char port, unsigned char data);
-
-//process crc_reg with new_char
-void process_crc(unsigned char new_char);
-
-//update lower sensor
-void update_lower();
-
-//update higher sensor
-void update_higher();
-
-unsigned char buffer_address, buffer_port, buffer_data, buffer_crch, buffer_crcl; //receive Buffers
-
-unsigned int crc_reg; //CRC Register
-unsigned char task_list;	//what to do, readme for bit values
-unsigned char timer2_count;		//timer helper wo work with timer2
-
-unsigned char lower_sensor, higher_sensor;
-
-/*
- *	frame_status is the actual mode of the slave, equivalent to the protocol,
-  *		0:			Waiting for address
-  *		1:			Got address, waiting for Read/write + port
-  *		2:			Waiting for DataByte
-  *		3:			Waiting for CRC16
-  *		99:			Got everything, waiting for crc check approval
-  *		100:		crc check correct, process data
-  *		101:		not the slaves address
- */
-unsigned char frame_status;
-
+//TODO: Quellcode aufr√§umen
+//TODO: analog messzeit ca 100us bis stabiles signal, also 200us draus machen
 int main(void)
 {
-	DDRD |= ((1 << PD5) | (1 << PD6) | (1 << PD7));
+	DDRC |= (1 << PC1);
+	PORTB |= (1 << PB2);
+	TIMER_Init();
+	dbus_init();
+	sei();
+	while(1)
+	{
+		dbus_receive();
+		if(timerStatus & TIMER_FLAG_MS1)
+		{
+			if(!(PINB & (1 << PB2)))
+			{
+				PORTC |= (1 << PC1);
+			} else {
+				PORTC &= ~(1 << PC1);
+			}
+			timerStatus &= ~TIMER_FLAG_MS1;
+			dbus_perform();
+		}
+		if(timerStatus & TIMER_FLAG_MS100)
+		{
+			timerStatus &= ~TIMER_FLAG_MS100;
+		}
+		if(timerStatus & TIMER_FLAG_MS1000)
+		{
+			timerStatus &= ~TIMER_FLAG_MS1000;
+		}
+	}
+	/*DDRD |= ((1 << PD5) | (1 << PD6) | (1 << PD7));
 	PORTB |= (1 << TASTER) | (1 << JUMPER);
 	//set timer2 to clk/1024 for periodic updates
 	TCCR2 = 0b00000111; //normal mode, clk = clkIO/1024
@@ -132,8 +87,7 @@ int main(void)
 				frame_status = 100;
 		}
 		
-		/*
-		 * Execution of input */
+		// Execution of input
 		
 		if (frame_status == 100)
 		{
@@ -155,15 +109,16 @@ int main(void)
 				asm volatile("nop"); //wait for conversion to complete
 			}
 		}
-    }
+    }*/
 }
 
+/*
 //receive data in buffer
 void receive()
 {
-	/*
-	 *	Get Address
-	 */ 
+	//
+	//	Get Address
+	//
 	if(frame_counter > 0 && frame_status == 0)	//we received sth and are waiting for an address
 	{
 		buffer_address = uart_getc();
@@ -176,18 +131,16 @@ void receive()
 		}
 	}
 		
-	/*
-	 *	Get Port
-	 */
+
+	 //	Get Port
+
 	if (frame_counter > 1 && frame_status == 1) //were addressed and a new port/command is available
 	{
 		buffer_port = uart_getc();
 		frame_status = 2;
 	}
 		
-	/*
-	 *	Get Data
- 	 */
+	//Get Data
 	if (frame_counter > 2 && frame_status == 2)
 	{
 		buffer_data = uart_getc();
@@ -201,8 +154,9 @@ void receive()
 		frame_status = 99;
 	}
 }
+*/
 
-void perform()
+/*void perform()
 {
 	if ( buffer_port & 0b10000000 ) //1 in bit7 -> write
 	{
@@ -233,17 +187,17 @@ void perform()
 //analog init script
 void analog_init()
 {
-		/* AVCC as Input Source, 100nF Cap between AREF and AVCC needed! */
+		// AVCC as Input Source, 100nF Cap between AREF and AVCC needed!
 	ADMUX |= (1 << REFS0);
 	ADMUX &=  ~( 1 << REFS1);
-	/* Left Adjust Result, LSB and 2.LSB in ADCL
-	   Results are less exact but sufficient for our needs */
+	// Left Adjust Result, LSB and 2.LSB in ADCL
+	   //Results are less exact but sufficient for our needs
 	ADMUX |= (1 << ADLAR);
-	/* Select ADC7 as Analog Input */
+	// Select ADC7 as Analog Input
 	ADMUX |= (1 << MUX1);
-	/* Enable ADC */
+	// Enable ADC
 	ADCSRA |= (1 << ADEN);
-	/* Perform one conversion, part of initialisation */
+	// Perform one conversion, part of initialisation
 	ADCSRA |= (1 << ADSC);
 	while(ADCSRA & (1 << ADSC))
 	{
@@ -264,19 +218,6 @@ void send(unsigned char address, unsigned char port, unsigned char data)
 	uart_putc(crc_reg & 0xFF);
 }
 
-//process crc_reg with new_char
-void process_crc(unsigned char new_char)
-{
-	//Function from ftp://www.wickenhaeuser.de/anleitungen/rs485pro.pdf
-	unsigned char uci, w;
-	crc_reg ^= new_char;		// Einblendung im unteren Byte der CRC
-	for(uci = 8; uci; uci--)	// 8 Schleifendurchg‰nge
-	{
-		w = crc_reg & 1;
-		crc_reg >>=1;
-		if(w) crc_reg^=0xA001;
-	}
-}
 
 //update lower sensor
 void update_lower()
@@ -293,7 +234,9 @@ void update_lower()
 	PORTC &= ~(1 << IR_OUT0);
 	lower_sensor = ADCH;
 }
+*/
 
+/*
 //update higher sensor
 void update_higher()
 {
@@ -310,16 +253,6 @@ void update_higher()
 	PORTC &= ~(1 << IR_OUT1);
 	higher_sensor = ADCH;
 }
+*/
 
-ISR(TIMER2_OVF_vect)
-{
-	//perform sensor updates
-	timer2_count++;
-	if(timer2_count > 9)
-	{
-		task_list |= 0x03;
-		timer2_count = 0;
-	}
-
-};
 

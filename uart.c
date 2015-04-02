@@ -46,6 +46,8 @@ LICENSE:
  *  constants and macros
  */
 
+#define DEBUG_UART
+
 //Frame Status byte
 unsigned char frame_counter;
 
@@ -501,9 +503,10 @@ Returns:  none
 **************************************************************************/
 void uart_puts(const char *s )
 {
-    while (*s) 
-      uart_putc(*s++);
-
+	#ifdef DEBUG_UART
+		while (*s)
+		  uart_putc(*s++);
+	#endif
 }/* uart_puts */
 
 
