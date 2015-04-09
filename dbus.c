@@ -11,6 +11,7 @@
 
 #include "dbus.h"
 #include "uart.h"
+#include "analog.h"
 #include <stdlib.h>
 #include <avr/io.h>
 #include <avr/eeprom.h>
@@ -38,6 +39,8 @@ static unsigned int calc_crc(frame *framePointer);
 static unsigned char send_Frame(frame *framePointer);
 static unsigned char fs_get_portd(frame *framePointer);
 static unsigned char fs_set_portd(frame *framePointer);
+static unsigned char fs_get_low_sens(frame *framePointer);
+static unsigned char fs_get_high_sens(frame *framePointer);
 
 /*
  *	Global Functions (Definitions)
@@ -104,9 +107,6 @@ extern enum Status dbus_perform()
 	if(frameStatus == statusReceiveComplete)
 	{
 		uart_puts("perform");
-		char string[10];
-		itoa(calc_crc(&frameBuffer), &string, 16);
-		uart_puts(&string);
 		if(frameBuffer.crc == calc_crc(&frameBuffer))
 		{
 			frameStatus = statusCrcCorrect;
@@ -119,6 +119,14 @@ extern enum Status dbus_perform()
 					break;
 				case FUNCTION_SET_PORTD:
 					fs_set_portd(&frameBuffer);
+					send_Frame(&frameBuffer);
+					break;
+				case FUNCTION_GET_LOW_SENS:
+					fs_get_low_sens(&frameBuffer);
+					send_Frame(&frameBuffer);
+					break;
+				case FUNCTION_GET_HIGH_SENS:
+					fs_get_high_sens(&frameBuffer);
 					send_Frame(&frameBuffer);
 					break;
 				default:
@@ -212,5 +220,21 @@ static unsigned char fs_set_portd(frame *framePointer)
 	PORTD = framePointer->data & LED_MASK;
 	framePointer->start = START_RES;
 	framePointer->data = 0x00;
+	return 0x00;
+}
+
+static unsigned char fs_get_low_sens(frame *framePointer)
+{
+	unsigned int c = ANALOG_GetValues();
+	framePointer->start = START_RES;
+	framePointer->data = c & 0xFF;
+	return 0x00;
+}
+
+static unsigned char fs_get_high_sens(frame *framePointer)
+{
+	unsigned int c = ANALOG_GetValues();
+	framePointer->start = START_RES;
+	framePointer->data = c >> 8;
 	return 0x00;
 }

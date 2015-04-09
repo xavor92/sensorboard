@@ -25,6 +25,8 @@
 //0x00 - 0x0F System
 #define FUNCTION_SET_PORTD 0x01
 #define FUNCTION_GET_PORTD 0x02
+#define FUNCTION_GET_LOW_SENS 0x03
+#define FUNCTION_GET_HIGH_SENS 0x04
 
 enum Status {
 	//Typical States
