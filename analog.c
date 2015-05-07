@@ -85,11 +85,9 @@ extern void ANALOG_Service()
 	pc3_off();
 }
 
-
-extern void ANALOG_Trigger();
-
 extern unsigned int ANALOG_GetValues()
 {
+	ANALOG_Service();
 	return results;
 }
 /*

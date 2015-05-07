@@ -24,7 +24,6 @@
 
 extern void ANALOG_Init();
 extern void ANALOG_Service();
-extern void ANALOG_Trigger();
 extern unsigned int ANALOG_GetValues();
 
 #endif /* ANALOG_H_ */

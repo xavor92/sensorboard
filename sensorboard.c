@@ -52,15 +52,10 @@ int main(void)
 		if(timerStatus & TIMER_FLAG_MS100)
 		{
 			timerStatus &= ~TIMER_FLAG_MS100;
-			ANALOG_Service();
 		}
 		if(timerStatus & TIMER_FLAG_MS1000)
 		{
 			timerStatus &= ~TIMER_FLAG_MS1000;
-//			unsigned int values = ANALOG_GetValues();
-//			char* test = (char*) &values;
-//			uart_putc(test[0]);
-//			uart_putc(test[1]);
 		}
 	}
 }
