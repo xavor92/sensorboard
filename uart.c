@@ -46,7 +46,7 @@ LICENSE:
  *  constants and macros
  */
 
-#define DEBUG_UART
+//#define DEBUG_UART
 
 //Frame Status byte
 unsigned char frame_counter;
